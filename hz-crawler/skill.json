@@ -1,0 +1,115 @@
+{
+    "skills": [
+        {
+            "name": "湖州项目信息关键词爬虫",
+            "description": "自动爬取湖州公共资源项目平台（huzhou.bqpoint.com），基于自定义关键词检索项目信息，支持自动翻页、内容去重、关键词匹配、发布时间提取，最终生成结构化JSON结果文件",
+            "version": "1.0.0",
+            "author": "自定义",
+            "type": "python",
+            "execute_type": "function",
+            "entry": "main",
+            "timeout": 300,
+            "input_params": [
+                {
+                    "name": "keywords",
+                    "display_name": "检索关键词列表",
+                    "type": "array",
+                    "required": true,
+                    "default": [
+                        "可行性",
+                        "可研",
+                        "项建",
+                        "项目建议书",
+                        "风险评估",
+                        "咨询评估",
+                        "资金平衡",
+                        "投融资",
+                        "投资决策",
+                        "绿色建筑",
+                        "节能评估",
+                        "专项债",
+                        "项目申请",
+                        "前期咨询",
+                        "新能源",
+                        "碳达峰",
+                        "碳排放",
+                        "超低能耗",
+                        "EOD",
+                        "低空经济",
+                        "近零",
+                        "ESG",
+                        "小额"
+                    ],
+                    "description": "用于检索项目信息的关键词列表，支持中文、英文、数字"
+                },
+                {
+                    "name": "max_page",
+                    "display_name": "单关键词最大翻页数",
+                    "type": "number",
+                    "required": false,
+                    "default": 10,
+                    "description": "每个关键词最多爬取的页面数量，防止无限爬取"
+                },
+                {
+                    "name": "sleep_time",
+                    "display_name": "请求间隔时间（秒）",
+                    "type": "number",
+                    "required": false,
+                    "default": 0.3,
+                    "description": "页面请求/解析的间隔时间，单位：秒，用于降低访问频率"
+                }
+            ],
+            "output_params": [
+                {
+                    "name": "total_count",
+                    "display_name": "爬取总条数",
+                    "type": "number",
+                    "description": "本次爬虫成功爬取的去重后数据总条数"
+                },
+                {
+                    "name": "keyword_stats",
+                    "display_name": "关键词命中统计",
+                    "type": "object",
+                    "description": "各关键词被匹配到的次数统计，用于分析热点关键词"
+                },
+                {
+                    "name": "output_file",
+                    "display_name": "结果文件路径",
+                    "type": "string",
+                    "description": "爬取结果JSON文件的保存路径，默认保存为 result.json"
+                }
+            ],
+            "dependencies": [
+                {
+                    "name": "selenium",
+                    "version": "latest"
+                },
+                {
+                    "name": "re",
+                    "version": "built-in"
+                },
+                {
+                    "name": "hashlib",
+                    "version": "built-in"
+                },
+                {
+                    "name": "datetime",
+                    "version": "built-in"
+                },
+                {
+                    "name": "collections",
+                    "version": "built-in"
+                }
+            ],
+            "code_attachment": {
+                "main_file": "huzhou_crawler.py",
+                "file_list": [
+                    {
+                        "filename": "huzhou_crawler.py",
+                        "content": "# -*- coding: utf-8 -*-\nfrom selenium import webdriver\nfrom selenium.webdriver.common.by import By\nfrom selenium.webdriver.chrome.options import Options\nfrom selenium.webdriver.support.ui import WebDriverWait\nimport time\nimport json\nimport re\nimport hashlib\nfrom collections import defaultdict\nfrom datetime import datetime\n\n# 全局配置\nBASE_URL = \"https://huzhou.bqpoint.com\"\n\n# 工具方法\ndef now_time():\n    return datetime.now().strftime(\"%Y-%m-%d %H:%M:%S\")\n\ndef init_driver():\n    options = Options()\n    options.add_argument(\"--start-maximized\")\n    return webdriver.Chrome(options=options)\n\ndef wait_list(driver):\n    WebDriverWait(driver, 10).until(lambda d: d.find_element(By.TAG_NAME, \"body\"))\n    time.sleep(1)\n\ndef get_links(driver):\n    elements = driver.find_elements(By.XPATH, \"//a\")\n    links = []\n    for a in elements:\n        try:\n            text = a.text.strip()\n            href = a.get_attribute(\"href\")\n            if not text or not href or \"javascript\" in href:\n                continue\n            links.append((text, href))\n        except:\n            continue\n    return links\n\ndef get_detail(driver, url):\n    try:\n        driver.execute_script(\"window.open(arguments[0]);\", url)\n        driver.switch_to.window(driver.window_handles[-1])\n        WebDriverWait(driver, 10).until(lambda d: d.find_element(By.TAG_NAME, \"body\"))\n        time.sleep(0.5)\n        text = driver.find_element(By.TAG_NAME, \"body\").text\n        publish_time = None\n        match = re.search(r\"\\d{4}-\\d{2}-\\d{2}\", text)\n        if match:\n            publish_time = match.group()\n        driver.close()\n        driver.switch_to.window(driver.window_handles[0])\n        return text, publish_time\n    except:\n        try:\n            driver.switch_to.window(driver.window_handles[0])\n        except:\n            pass\n        return \"\", None\n\ndef match_keywords(text, kws):\n    return list(set([kw for kw in kws if re.search(kw, text)]))\n\ndef make_hash(title, url, content):\n    return hashlib.md5((title + url + content).encode(\"utf-8\")).hexdigest()\n\ndef click_page(driver, target):\n    try:\n        old = driver.page_source\n        elements = driver.find_elements(By.XPATH, \"//a | //span\")\n        for el in elements:\n            if el.text.strip() == str(target):\n                driver.execute_script(\"arguments[0].click();\", el)\n                WebDriverWait(driver, 10).until(lambda d: d.page_source != old)\n                return True\n        return False\n    except:\n        return False\n\n# 主爬虫逻辑\ndef crawl(keywords, max_page=10, sleep_time=0.3):\n    driver = init_driver()\n    results = []\n    seen = set()\n    stats = defaultdict(int)\n    idx = 0\n\n    for kw in keywords:\n        print(f\"\\n🔍 关键词: {kw}\")\n        driver.get(f\"{BASE_URL}/search.html?content={kw}\")\n        wait_list(driver)\n        page = 1\n\n        while page <= max_page:\n            print(f\"📄 第 {page} 页\")\n            links = get_links(driver)\n            if not links:\n                break\n\n            for title, url in links:\n                content, publish_time = get_detail(driver, url)\n                h = make_hash(title, url, content)\n                if h in seen:\n                    continue\n                seen.add(h)\n                matched = match_keywords(title + content, keywords)\n                for m in matched:\n                    stats[m] += 1\n                idx += 1\n                results.append({\n                    \"index\": idx, \"title\": title, \"url\": url,\n                    \"keywords\": matched, \"search_keyword\": kw, \"page\": page,\n                    \"crawl_time\": now_time(), \"publish_time\": publish_time\n                })\n                print(f\"   ✔ {idx} {title[:30]}\")\n                time.sleep(sleep_time)\n\n            if not click_page(driver, page + 1):\n                break\n            wait_list(driver)\n            page += 1\n\n    driver.quit()\n    return results, stats\n\n# 入口函数\ndef main(keywords=None, max_page=10, sleep_time=0.3):\n    if keywords is None:\n        keywords = [\n            \"可行性\",\n            \"可研\",\n            \"项建\",\n            \"项目建议书\",\n            \"风险评估\",\n            \"咨询评估\",\n            \"资金平衡\",\n            \"投融资\",\n            \"投资决策\",\n            \"绿色建筑\",\n            \"节能评估\",\n            \"专项债\",\n            \"项目申请\",\n            \"前期咨询\",\n            \"新能源\",\n            \"碳达峰\",\n            \"碳排放\",\n            \"超低能耗\",\n            \"EOD\",\n            \"低空经济\",\n            \"近零\",\n            \"ESG\",\n            \"小额\"\n        ]\n\n    data, stats = crawl(keywords, max_page, sleep_time)\n    output = {\n        \"crawl_time\": now_time(), \"total\": len(data),\n        \"keyword_stats\": dict(stats), \"data\": data\n    }\n\n    with open(\"result.json\", \"w\", encoding=\"utf-8\") as f:\n        json.dump(output, f, ensure_ascii=False, indent=2)\n\n    return {\n        \"total_count\": len(data),\n        \"keyword_stats\": dict(stats),\n        \"output_file\": \"result.json\"\n    }\n\nif __name__ == \"__main__\":\n    main()"
+                    }
+                ]
+            }
+        }
+    ]
+}
