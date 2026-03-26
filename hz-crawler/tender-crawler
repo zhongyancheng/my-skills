@@ -1,0 +1,332 @@
+import json
+import re
+import time
+import urllib.request
+
+SF_API_KEY = "sk-hieliwzyfyufvcbnpxkosibxheggldriraxumvonvolcbfna"
+SF_API_URL = "https://api.siliconflow.cn/v1/chat/completions"
+SF_MODEL = "deepseek-ai/DeepSeek-V3.2"  # 使用 Kimi 模型
+
+
+def filter_rule(search_type, search_keyword, data):
+    """
+    基于规则对招标数据进行过滤和匹配
+    :param search_type: 业务类型，例如：水利、PMC、代建等
+    :param search_keyword: 搜索关键词，例如：水利、PMC、全过程、全咨、设计、监理、造价、咨询等
+    :param data: 招标数据字典
+        初始data = {
+        "标书标题": None,
+        "招标公告": None,
+        "标书区域": None,
+        "招标行业": None,
+        "发布时间": None,
+        "中标价格": " ",
+        "招标预算": " ",
+        "详情链接": None
+        }
+    :return:
+        - 匹配成功: [data]  （即原始数据）
+        - 匹配失败: []
+    """
+
+    if data.get("招标预算", "") == "":
+        data["招标预算"] = " "
+    if data.get("中标价格", "") == "":
+        data["中标价格"] = " "
+    if data.get("标书标题", "") == "":
+        data["标书标题"] = " "
+    if data.get("标书区域", "") == "":
+        data["标书区域"] = " "
+    if data.get("招标行业", "") == "":
+        data["招标行业"] = " "
+
+    if "运营类" in data["标书标题"] or "水源置换" in data["标书标题"] or "货物" in data["招标行业"]:
+        return []
+    match search_type:
+        case "水利":
+            if "浙江" in data["标书区域"]:
+                if search_keyword == "水利":
+                    if (type(data["招标预算"]) != str and data["招标预算"] >= 100) or (
+                            type(data["中标价格"]) != str and data["中标价格"] >= 10000):
+                        return data
+                    else:
+                        return []
+            else:
+                return []
+
+        case "PMC":
+            if "浙江" in data["标书区域"]:
+                if search_keyword in ("PMC", "建筑师负责制", "全过程"):
+                    if type(data["招标预算"]) != str and data["招标预算"] >= 300:
+                        return data
+                    else:
+                        return []
+                elif search_keyword == "全咨":
+                    if type(data["招标预算"]) != str and data["招标预算"] >= 300:
+                        return data
+                    if "水利" in data["标书标题"] and type(data["招标预算"]) != str and data["招标预算"] >= 200:
+                        return data
+                    if "水利" in data["标书标题"] and "台州" in data["标书区域"] and type(data["招标预算"]) != str and \
+                            data[
+                                "招标预算"] >= 100:
+                        return data
+                    else:
+                        return []
+            else:
+                return []
+
+        case "代建":
+            if any(i in data["标书标题"] for i in
+                   ("市政", "市政配套", "红线外设施", "公共基础", "城市道路", "市政路网", "排水管网", "污水干管",
+                    "电力管线", "市政供电", "城市绿化", "公共绿地", "行道树")):
+                return []
+            if any(i in data["标书标题"] for i in
+                   ("地产", "住宅", "公寓", "别墅", "洋房", "高层", "保障房", "安置房", "人才房", "共有产权房")):
+                return []
+            if "浙江" in data["标书区域"]:
+                if type(data["中标价格"]) != str and data["中标价格"] >= 20000:
+                    return data
+            elif "深圳" in data["标书区域"]:
+                if type(data["招标预算"]) != str and data["招标预算"] >= 500:
+                    return data
+            else:
+                if (type(data["中标价格"]) != str and data["中标价格"] >= 100000) or (
+                        type(data["招标预算"]) != str and data["招标预算"] >= 1000):
+                    return data
+                else:
+                    return []
+
+        case "设计":
+            if "浙江" in data["标书区域"]:
+                if search_keyword in ("设计", "编制", "选址论证", "实施方案"):
+                    if any(i in data["标书标题"] for i in
+                           ("医院", "学校", "学院", "大学", "高中", "中学", "小学", "幼儿园", "育幼院")):
+                        if type(data["招标预算"]) != str and data["招标预算"] >= 100:
+                            return data
+                    elif (type(data["中标价格"]) != str and data["中标价格"] >= 20000) or (
+                            type(data["招标预算"]) != str and data["招标预算"] >= 200):
+                        return data
+                    else:
+                        return []
+                elif search_keyword in ("概念", "规划"):
+                    if type(data["招标预算"]) != str and data["招标预算"] >= 1000:
+                        return data
+                    else:
+                        return []
+                else:
+                    return []
+            else:
+                if any(i in data["标书标题"] for i in
+                       ("综合体", "广场", "天地", "医院", "学校", "学院", "大学", "高中", "中学", "小学", "幼儿园",
+                        "育幼院")):
+                    if type(data["中标价格"]) != str and data["中标价格"] >= 100000:
+                        return data
+                else:
+                    return []
+
+        case "监理":
+            if "浙江" in data["标书区域"]:
+                if "台州" in data["标书区域"] and type(data["招标预算"]) != str and data["招标预算"] >= 100:
+                    return data
+                elif (type(data["中标价格"]) != str and data["中标价格"] >= 30000) or (
+                        type(data["招标预算"]) != str and data["招标预算"] >= 300):
+                    return data
+                else:
+                    return []
+            else:
+                if any(i in data["标书标题"] for i in
+                       ("综合体", "广场", "天地", "医院", "学校", "学院", "大学", "高中", "中学", "小学", "幼儿园",
+                        "育幼院")):
+                    if "深圳" in data["标书区域"] and type(data["招标预算"]) != str and data["招标预算"] >= 500:
+                        return data
+                    elif (type(data["中标价格"]) != str and data["中标价格"] >= 100000) or (
+                            type(data["招标预算"]) != str and data["招标预算"] >= 1000):
+                        return data
+                else:
+                    return []
+
+        case "招标代理":
+            if "浙江" in data["标书区域"]:
+                if type(data["招标预算"]) != str and data["招标预算"] >= 50:
+                    return data
+                elif "年度" in data["标书标题"] and "工程" in data["标书标题"]:
+                    return data
+                else:
+                    return []
+            else:
+                return []
+
+        case "造价":
+            if "浙江" in data["标书区域"]:
+                if "年度" in data["标书标题"]:
+                    return data
+                if search_keyword in ("结算", "审核") and type(data["招标预算"]) != str and data["招标预算"] >= 30:
+                    return data
+                elif search_keyword in ("造价", "审计", "预算", "决算", "概算", "招标控制价", "工程量清单", "复审",
+                                        "中介服务", "跟审", "中介机构", "评审", "审价", "协审") and type(
+                    data["招标预算"]) != str and data["招标预算"] >= 50:
+                    return data
+                else:
+                    return []
+            else:
+                return []
+
+        case "咨询":
+            if any(i in data["标书标题"] for i in
+                   ("监理", "施工", "审计", "专户", "监管账户", "发行准备", "招标代理", "造价咨询", "中标候选人",
+                    "中标结果", "答疑", "更正", "成交")):
+                if "浙江" in data["标书区域"]:
+                    if "公路" in data["标书标题"]:
+                        if search_keyword == "可研" and type(data["招标预算"]) != str and data["招标预算"] >= 10:
+                            return data
+                    else:
+                        return []
+
+                    if (search_keyword in ("可研", "可行性", "社会风险", "风险评估", "节能评估", "能效测评", "稳评",
+                                           "碳达峰", "能评", "社会稳定风险", "稳定性评估", "社会险评估",)
+                            and type(data["招标预算"]) != str and data["招标预算"] >= 10):
+                        return data
+                    elif type(data["招标预算"]) != str and data["招标预算"] >= 50:
+                        return data
+                    else:
+                        return []
+                else:
+                    return []
+            else:
+                return []
+
+        case "第三方":
+            if "浙江" in data["标书区域"]:
+                if "杭州" in data["标书区域"]:
+                    return data
+                elif type(data["招标预算"]) != str and data["招标预算"] >= 50:
+                    return data
+                else:
+                    return []
+            else:
+                return []
+
+    return []
+
+
+def assess_business(search_type, search_content: dict):
+    """
+    调用模型对招标数据进行业务匹配度评估
+    :param search_type: 业务类型，例如：水利、PMC、代建等
+    :param search_content: 招标数据字典
+        初始data = {
+        "标书标题": None,
+        "招标公告": None,
+        "标书区域": None,
+        "招标详情": None,
+        }
+    :return:
+        data = {
+        "ai_result": ,
+        "reason": ,
+        "ai_summary": ,
+        }
+    """
+
+    if len(search_content.get("招标详情", "")):
+        search_content["招标详情"] = search_content["招标详情"][:2000]
+
+    text_parts = [f"{k}：{v}" for k, v in search_content.items() if k in ["标书标题", "招标公告", "标书区域"]]
+    combined_text = "\n".join(text_parts).strip()
+
+    headers = {
+        "Authorization": f"Bearer {SF_API_KEY}",
+        "Content-Type": "application/json"
+    }
+
+    content_dict = {
+        '通用': '我们公司只做建筑工程、水利工程、建筑安装工程、工业建筑工程，不做通信基础设施建设工程，不做运营类、软件系统类的项目。你是招标信息判定专家。请判断项目内容是否属于以下业务范围的招投标信息：水利、PMC、EPC、代建、设计、监理、招标代理、造价、咨询、设计咨询、第三方。仅输出严格 JSON：{\"ai_result\":\"match|uncertain|nomatch\",\"reason\":\"简短原因\"}。如果无法判断请给 uncertain。',
+        '代建': '我们公司只做建筑工程、水利工程、建筑安装工程、工业建筑工程，不做通信基础设施建设工程，不做运营类、软件系统类的项目。你是招标信息判定专家。请判断项目内容是否属于以下业务范围的招投标信息：水利、PMC、EPC、代建、设计、监理、招标代理、造价、咨询、设计咨询、第三方。纯地产的招标信息都不要。仅输出严格 JSON：{"ai_result":"match|uncertain|nomatch","reason":"简短原因"}。如果无法判断请给 uncertain。',
+        '设计': '我们公司只做建筑工程、水利工程、建筑安装工程、工业建筑工程，不做通信基础设施建设工程，不做运营类、软件系统类的项目。你是招标信息判定专家。请判断项目内容是否属于以下业务范围的招投标信息：水利、PMC、EPC、代建、设计、监理、招标代理、造价、咨询、设计咨询、第三方。浙江省外只做医院、学校、综合体类的业务。仅输出严格 JSON：{"ai_result":"match|uncertain|nomatch","reason":"简短原因"}。如果无法判断请给 uncertain。',
+        '监理': '我们公司只做建筑工程、水利工程、建筑安装工程、工业建筑工程，不做通信基础设施建设工程，不做运营类、软件系统类的项目。你是招标信息判定专家。请判断项目内容是否属于以下业务范围的招投标信息：水利、PMC、EPC、代建、设计、监理、招标代理、造价、咨询、设计咨询、第三方。浙江省外只做医院、学校、综合体类的业务。仅输出严格 JSON：{\"ai_result\":\"match|uncertain|nomatch\",\"reason\":\"简短原因\"}。如果无法判断请给 uncertain。',
+        '造价': '我们公司只做建筑工程、水利工程、建筑安装工程、工业建筑工程，不做通信基础设施建设工程，不做运营类、软件系统类的项目。你是招标信息判定专家。请判断项目内容是否属于以下业务范围的招投标信息：水利、PMC、EPC、代建、设计、监理、招标代理、造价、咨询、设计咨询、第三方。是年度合同则都要。仅输出严格 JSON：{\"ai_result\":\"match|uncertain|nomatch\",\"reason\":\"简短原因\"}。如果无法判断请给 uncertain。',
+    }
+
+    payload = {
+        "model": SF_MODEL,
+        "messages": [
+            {
+                "role": "system",
+                "content": content_dict[search_type] if content_dict.get(search_type, False) else content_dict["通用"]
+            },
+            {
+                "role": "user",
+                "content": combined_text
+            }
+        ],
+        "stream": False,
+        "enable_thinking": False,
+        "max_tokens": 200,
+        "temperature": 0
+    }
+
+    max_retries = 3
+    for attempt in range(max_retries):
+        try:
+            json_data = json.dumps(payload).encode('utf-8')
+            req = urllib.request.Request(SF_API_URL, data=json_data, headers=headers, method='POST')
+            proxy_handler = urllib.request.ProxyHandler({})
+            opener = urllib.request.build_opener(proxy_handler)
+            urllib.request.install_opener(opener)
+            with urllib.request.urlopen(req, timeout=60) as response:
+                result = json.loads(response.read().decode('utf-8'))
+                if "choices" in result and len(result["choices"]) > 0:
+                    content = result["choices"][0]["message"]["content"].strip()
+                    try:
+                        parsed = json.loads(content)
+                        res = parsed.get("result", "uncertain")
+                        if res == "nomatch":
+                            return parsed
+                        if res == "match":
+                            payload["messages"][0][
+                                "content"] = "你是一个招标信息摘录专家。阅读以下招标公告内容，简要总结关键信息。重点关注：发布时间、地区、产品类型、县市、工程名称、投资额、建筑面积、项目业主、报名要求、招标代理、报名时间、联系方式。请用简洁的列表形式输出，不超过 300 字。"
+                            json_data = json.dumps(payload).encode('utf-8')
+                            req = urllib.request.Request(SF_API_URL, data=json_data, headers=headers, method='POST')
+                            proxy_handler = urllib.request.ProxyHandler({})
+                            opener = urllib.request.build_opener(proxy_handler)
+                            urllib.request.install_opener(opener)
+                            with urllib.request.urlopen(req, timeout=60) as response2:
+                                result = json.loads(response2.read().decode('utf-8'))
+                                if "choices" in result and len(result["choices"]) > 0:
+                                    summary = result["choices"][0]["message"]["content"].strip()
+                                    parsed["ai_summary"] = summary
+                                    return parsed
+                                else:
+                                    print(f"    ⚠️ AI 响应无内容 (尝试 {attempt + 1}/{max_retries})")
+
+                    except Exception:
+                        match = re.search(r'\{[\s\S]*\}', content)
+                        if match:
+                            try:
+                                parsed = json.loads(match.group(0))
+                                if res == "nomatch":
+                                    return parsed
+                                if res == "match":
+                                    payload["messages"][0][
+                                        "content"] = "你是一个招标信息摘录专家。阅读以下招标公告内容，简要总结关键信息。重点关注：发布时间、地区、产品类型、县市、工程名称、投资额、建筑面积、项目业主、报名要求、招标代理、报名时间、联系方式。请用简洁的列表形式输出，不超过 300 字。"
+                                    json_data = json.dumps(payload).encode('utf-8')
+                                    req = urllib.request.Request(SF_API_URL, data=json_data, headers=headers,
+                                                                 method='POST')
+                                    proxy_handler = urllib.request.ProxyHandler({})
+                                    opener = urllib.request.build_opener(proxy_handler)
+                                    urllib.request.install_opener(opener)
+                                    with urllib.request.urlopen(req, timeout=60) as response2:
+                                        result = json.loads(response2.read().decode('utf-8'))
+                                        if "choices" in result and len(result["choices"]) > 0:
+                                            summary = result["choices"][0]["message"]["content"].strip()
+                                            parsed["ai_summary"] = summary
+                                            return parsed
+                                        else:
+                                            print(f"    ⚠️ AI 响应无内容 (尝试 {attempt + 1}/{max_retries})")
+                            except Exception as e:
+                                print(e)
+                                time.sleep(1)
+        except Exception as e:
+            print(e)
+            time.sleep(1)
+    return {"ai_result": "uncertain", "reason": "未知"}
