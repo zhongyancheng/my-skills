@@ -1,44 +1,44 @@
 {
-    "name": "zhaobiao_filter_ai",
-    "author": "coder",
-    "version": "1.0",
-    "entry": "main",
-    "description": "招标公告规则过滤+AI匹配评估",
-    "trigger_keywords": [
-        "招标过滤",
-        "可研筛选",
-        "招标评估",
-        "公告筛选"
-    ],
-    "grant": [
-        "all"
-    ],
-    "ui": {
-        "icon": "\ud83d\udcdd",
-        "color": "#4285F4"
+  "name": "zhaobiao_filter_ai",
+  "author": "coder",
+  "version": "1.0",
+  "entry": "main",
+  "description": "招标公告规则过滤+AI匹配评估",
+  "trigger_keywords": [
+    "招标过滤",
+    "可研筛选",
+    "招标评估",
+    "公告筛选"
+  ],
+  "grant": [
+    "all"
+  ],
+  "ui": {
+    "icon": "file",
+    "color": "#4285F4"
+  },
+  "params": [
+    {
+      "name": "search_type",
+      "type": "string",
+      "required": true,
+      "description": "业务类型：水利/PMC/代建/设计/监理/造价/咨询/第三方"
     },
-    "params": [
-        {
-            "name": "search_type",
-            "type": "string",
-            "required": true,
-            "description": "业务类型：水利/PMC/代建/设计/监理/造价/咨询/第三方"
-        },
-        {
-            "name": "search_keyword",
-            "type": "string",
-            "required": true,
-            "description": "搜索关键词"
-        },
-        {
-            "name": "data",
-            "type": "object",
-            "required": true,
-            "description": "招标原始数据"
-        }
-    ],
-    "result": {
-        "type": "object",
-        "description": "过滤+AI评估结果"
+    {
+      "name": "search_keyword",
+      "type": "string",
+      "required": true,
+      "description": "搜索关键词"
+    },
+    {
+      "name": "data",
+      "type": "object",
+      "required": true,
+      "description": "招标原始数据"
     }
+  ],
+  "result": {
+    "type": "object",
+    "description": "过滤+AI评估结果"
+  }
 }
